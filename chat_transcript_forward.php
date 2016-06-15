@@ -44,7 +44,8 @@ use RightNow\Connect\v1_2 as RNCPHP;
 
 $messageBase= RightNow\Connect\v1_2\MessageBase::fetch(CUSTOM_MSG_CHAT_TRANSCRIPT_CONTACT_ID);
 $adminContactId= $messageBase->Value;
-//$adminContactId=79;
+$adminContactId=79; //Client Email
+
 $contact=RNCPHP\Contact::fetch($adminContactId);
 $adminEmail=($contact->Emails[0]->Address)?$contact->Emails[0]->Address:$contact->Emails[1]->Address;
 
@@ -53,8 +54,13 @@ $cron_enabled= $messageBase->Value;
 
 $messageBase=RightNow\Connect\v1_2\MessageBase::fetch(CUSTOM_MSG_CHAT_CRON_FILTER_ENABLE);
 $filter_enabled=$messageBase->Value;
-$filter_enabled="OFF";
-$analytics_report_id=100009; //Some Arbitrary Value.
+
+$analytics_report_id=100009; //Report Id.
+
+$rp_handle=@fopen("/tmp/email_sent.txt","r");
+$sent=@fread($rp_handle,filesize("/tmp/email_sent.txt"));
+$sent=explode(",",$sent);
+
 $ps_log = new Log(array(
 	'type'                  => Type::Import,
 	'subtype'               => "Guardian Life LIC Chat Transcript tracking !",
@@ -103,7 +109,7 @@ else{
 			$filter->Name = "ChatId";
 			$filter->Operator = new RightNow\Connect\v1_2\NamedIDOptList();
 			$filter->Operator->ID = 1; // this the between operator.
-			$filter->Values = array(367);
+			$filter->Values = array(385);
 			$filters[] = $filter;
 
 			$ar= RNCPHP\AnalyticsReport::fetch($analytics_report_id);
@@ -168,7 +174,7 @@ xyz;
 		for($i=0;$i<$arr->count();$i++):
 			$key=(object)$arr->next();
 
-			if($key->messageText): // Make sure there are no empty messages.
+			if($key->messageText && !in_array($key->chatId,$sent)): // Make sure there are no empty messages.
 
 				$from_name=($key->fromName)?$key->fromName:$key->firstName.$key->lastName; // Either Client's Name of Agent's name would be there.
 				$from_name=remove_spcl_chars($from_name);
@@ -203,7 +209,6 @@ xyz;
 ##            Now fire the mail                                        ##
 #########################################################################
 
-
 		$mailCounter=1;
 		foreach($xmlStoreVar as $key=>$value):
 			try{
@@ -213,22 +218,22 @@ xyz;
 				$email = new RNCPHP\Email();
 				$email->Address = $adminEmail;
 				$email->AddressType->ID = 0;
-				$email1="hiralal.dedhia@oracle.com";
-				$email2="anirban.chaudhuri@oracle.com";
-				$email3="phanikishore_prathapa@glic.com";
-				$email4="charles_ashe@glic.com";
-				$email5="deepak_purushothaman@glic.com";
-				$email6="javier_florez@glic.com";
-				$email7="dennis.finn@oracle.com";
-				$email8="joseph_pennisi@glic.com";
+				$e1="hiralal.dedhia@oracle.com";
+				$e2="anirban.chaudhuri@oracle.com";
+				$e3="phanikishore_prathapa@glic.com";
+				$e4="charles_ashe@glic.com";
+				$e5="deepak_purushothaman@glic.com";
+				$e6="javier_florez@glic.com";
+				$e7="dennis.finn@oracle.com";
+				$e8="joseph_pennisi@glic.com";
+				$e9="srinivasulu.rao@oracle.com";
+				$e10="autonomyjournal@glic.com";
 
-				if($mailCounter%200==0){
-					//You can't sent more than 200 mails at a time from OSvC.
-					sleep(3);
-				}
+				if($mailCounter==200)
+					break;
 
 				$mm = new RNCPHP\MailMessage();
-				$mm->To->EmailAddresses=array("doru.arfire.1279@gmail.com");
+				$mm->To->EmailAddresses=array($e10,$e9);
 				//$mm->CC->EmailAddresses = array($email1,$email2,$email3,$email4,$email5,$email6,$email7);
 				$mm->Subject = "OSvC ".$key;
 				$mm->Body->Text = $mail_body;
@@ -236,14 +241,17 @@ xyz;
 				$mm->Headers[0]='X-AUTONOMY-SUBTYPE:OracleChat';
 				//$mm->Body->Html = $mail_body;
 				$mm->send();
+				$sent[]=$key;
 				$mailCounter++;
-				$ps_log->notice("Chat Transcript Mail Succesfully sent for Chat Id: {$key}");
+				$ps_log->notice("Chat Transcript Mail Succesfully sent for Chat Id: {$key}"."<br>");
 
 			}
 			catch(RNCPHP\ConnectAPIError $err){
-				$ps_log->error("Connect PHP Error :".$err->getMessage(). "@". $err->getLine());
+				$ps_log->error("Connect PHP Error :".$err->getMessage(). "@". $err->getLine()."<br>");
 			}
 		endforeach;
+
+
 
 	}
 	catch(RNCPHP\ConnectAPIError $err){
@@ -252,6 +260,19 @@ xyz;
 
 }
 ?>
+
+<?php
+
+$rp_handle=@fopen("/tmp/email_sent.txt","w");
+$sent=@fwrite($rp_handle,@implode(",",$sent));
+
+$endMicroTime=microtime(true);
+$scriptCompleteTime=$endMicroTime-$startMicroTime;
+$scriptCompleteTime=number_format($scriptCompleteTime,2);
+$ps_log->debug("Script Execution Completed within ".$scriptCompleteTime." seconds");
+echo "Script Execution Completed within ".$scriptCompleteTime." seconds";
+?>
+
 
 <?php
 function debug($arrayObject,$height="30px"){
@@ -306,12 +327,4 @@ function debugger(){
 
 }
 
-?>
-
-<?php
-$endMicroTime=microtime(true);
-$scriptCompleteTime=$endMicroTime-$startMicroTime;
-$scriptCompleteTime=number_format($scriptCompleteTime,2);
-$ps_log->debug("Script Execution Completed within ".$scriptCompleteTime." seconds");
-echo "Script Execution Completed within ".$scriptCompleteTime." seconds";
 ?>
