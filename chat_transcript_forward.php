@@ -5,8 +5,16 @@
  *  Send the Chat transcripts.
  * (c) Copyright Oracle Corporation.
  */
+
 error_reporting(E_ALL);
 set_time_limit(0); //This going to run the code for unlimited time.
+$dateTimeZone = new DateTimeZone("UTC");
+$dateTime = new DateTime();
+$date= new DateTime(); // Current timezone.
+$interval_end =$date->setTimestamp(($date->getTimestamp()+(3600*1)))->format("Y-m-d H:i:s");
+//$interval_end=$date->format("Y-m-d H:i:s");
+$end_dt = $date->sub(new DateInterval('PT1H'));
+$interval_start = $end_dt->format("Y-m-d H:i:s");
 
 $startMicroTime=microtime(true);
 //Display errors i want to see.
@@ -36,6 +44,7 @@ use RightNow\Connect\v1_2 as RNCPHP;
 
 $messageBase= RightNow\Connect\v1_2\MessageBase::fetch(CUSTOM_MSG_CHAT_TRANSCRIPT_CONTACT_ID);
 $adminContactId= $messageBase->Value;
+//$adminContactId=79;
 $contact=RNCPHP\Contact::fetch($adminContactId);
 $adminEmail=($contact->Emails[0]->Address)?$contact->Emails[0]->Address:$contact->Emails[1]->Address;
 
@@ -44,14 +53,8 @@ $cron_enabled= $messageBase->Value;
 
 $messageBase=RightNow\Connect\v1_2\MessageBase::fetch(CUSTOM_MSG_CHAT_CRON_FILTER_ENABLE);
 $filter_enabled=$messageBase->Value;
-
+$filter_enabled="OFF";
 $analytics_report_id=100009; //Some Arbitrary Value.
-$current_timestamp=time();
-$start_timestamp=$current_timestamp-63600; //Started before one hour
-$interval_end=date("Y-m-d H:i:s");
-$endTimeObj=new DateTime;
-$interval_start=$endTimeObj->setTimestamp($start_timestamp)->format("Y-m-d H:i:s"); // One hour Interval
-
 $ps_log = new Log(array(
 	'type'                  => Type::Import,
 	'subtype'               => "Guardian Life LIC Chat Transcript tracking !",
@@ -59,7 +62,8 @@ $ps_log = new Log(array(
 	'logToDb'               => true,
 	'logToFile'             => false
 ));
-$ps_log->logToFile(true)->logToDb(true)->stdOutputThreshold(Severity::Error)->error($message);
+
+$ps_log->logToFile(false)->logToDb(true)->stdOutputThreshold(Severity::Debug);
 
 if($cron_enabled=="OFF"){
 	exit;
@@ -71,7 +75,7 @@ else{
 #########################################################################
 
 	try{
-
+		$ps_log->debug("Script Execution Started @ ".$interval_end);
 //If it was last executed then no filters would be applied for the Analytics Report.
 
 		if($filter_enabled=="ON") {
@@ -82,6 +86,15 @@ else{
 			$filter->Operator->ID = 9; // this the between operator.
 			$filter->Values = array($interval_start, $interval_end);
 			$filters[] = $filter;
+
+			$ar= RNCPHP\AnalyticsReport::fetch($analytics_report_id);
+			$arr= $ar->run(0,$filters);
+
+
+		}
+		else if($filter_enabled=="OFF"){
+			$ar= RNCPHP\AnalyticsReport::fetch($analytics_report_id);
+			$arr= $ar->run();
 		}
 		else{
 			//Create my own filter, of just chat id.
@@ -90,69 +103,95 @@ else{
 			$filter->Name = "ChatId";
 			$filter->Operator = new RightNow\Connect\v1_2\NamedIDOptList();
 			$filter->Operator->ID = 1; // this the between operator.
-			$filter->Values = array(244);
+			$filter->Values = array(367);
 			$filters[] = $filter;
+
+			$ar= RNCPHP\AnalyticsReport::fetch($analytics_report_id);
+			$arr= $ar->run(0,$filters);
 		}
 
 
-
-		$ar= RNCPHP\AnalyticsReport::fetch($analytics_report_id);
-		$arr= $ar->run(0,$filters);
-
+		//debugger();
 
 		$standard_data_text=<<<xyz
 	<?xml version="1.0" encoding="UTF-8"?>
-        <Transcript>
-	<chatId>[chat_id]</chatId>
-	<startTime>[start_time]</startTime> 
-	<endTime>[end_time]</endTime>
-	<interfaceName>[interface_name]</interfaceName>
-	<agentId>[agent_id]</agentId>
-	<agentName>[agent_name]</agentName>
-	<customerId>[customer_id]</customerId>
-	<customerName>[customer_name]</customerName>
-	<subject>[subject]</subject>
-	<groupId>[group_id]</groupId>
-	<events>
 
-        [conversation]
+        <interaction>
+		<interID>[chat_id]</interID>
+		<startTime>[start_time]</startTime> 
+		<endTime>[end_time]</endTime>
+		<networkID>OSvC</networkID>
+		<employeeID>[agent_email]</employeeID>
+		<buddyName>[customer_name]</buddyName>
+		<transcript>
+			<event>
 
-        </events>
-</Transcript>
+				   <partEntered>
+						<networkID>OSvC</networkID>
+						<timeStamp>[part_entered]</timeStamp>
+						<buddyName>[customer_name]</buddyName>
+				   </partEntered>
+
+			</event>
+
+			[conversation]
+
+			<event>
+
+				   <partLeft>
+						<networkID>OSvC</networkID>
+						<timeStamp>[part_left]</timeStamp>
+						<buddyName>[part_left_bn]</buddyName>
+				   </partLeft>
+
+			</event>
+
+    </transcript>
+</interaction>
 xyz;
 
 		$conversations=<<<xyz
 
 	<event>
-	<timeStamp>[time_stamp]</timeStamp>
-	<fromName>[from_name]</fromName>
-	<messageText>[message_text]</messageText>
+			<msgSent>
+				<timeStamp>[time_stamp]</timeStamp>
+				<networkID>OSvC</networkID>
+				<buddyName>[from_name]</buddyName>
+				<text>[message_text]</text>
+			</msgSent>
 	</event>
 
 xyz;
 
 		$xmlStoreVar=array();
+		$chat_start=array();
 		for($i=0;$i<$arr->count();$i++):
 			$key=(object)$arr->next();
-			if($key->messageText):  // Make sure there are no empty messages.
+
+			if($key->messageText): // Make sure there are no empty messages.
+
+				$from_name=($key->fromName)?$key->fromName:$key->firstName.$key->lastName; // Either Client's Name of Agent's name would be there.
+				$from_name=remove_spcl_chars($from_name);
+				$part_left_bn=($key->fromName)?$key->firstName.$key->lastName:remove_spcl_chars(getUserEntityName('Account',$key->agentId));
+
 				$chat_session_data=array(
 					'[chat_id]'=>$key->chatId,
-					'[start_time]'=>$key->startTime,
-					'[end_time]'=>$key->endTime,
+					'[start_time]'=>str_to_timestamp($key->startTime),
+					'[end_time]'=>str_to_timestamp($key->endTime),
 					'[interface_name]'=>$key->interfaceName,
-					'[agent_id]'=>$key->agentId,
-					'[agent_name]'=>getUserEntityName('Account',$key->agentId),
-					'[customer_id]'=>$key->customerId,
-					'[customer_name]'=>getUserEntityName('Contact',$key->customerId),
-					'[subject]'=>$key->subject,
-					'[group_id]'=>$key->groupId
+					'[agent_email]'=>$key->agentEmail,
+					'[customer_name]'=>remove_spcl_chars($key->firstName.$key->lastName),
+					'[part_entered]'=>str_to_timestamp($key->partEntered),
+					'[part_left]'=>str_to_timestamp($key->partLeft),
+					'[part_left_bn]'=>remove_spcl_chars($part_left_bn)
 				);
 
-				$from_name=($key->fromName)?$key->fromName:$key->firstName." ".$key->lastName; // Either Client's Name of Agent's name would be there.
+
 				$chat_conversation_data=array(
-					'[time_stamp]'=>$key->messageTimestamp,
+					'[time_stamp]'=>str_to_timestamp($key->messageTimestamp),
 					'[from_name]'=>$from_name,
-					'[message_text]'=>$key->messageText
+					'[message_text]'=>strip_tags($key->messageText),
+					'[message_event]'=>$messageEvent
 				);
 
 				$xmlStoreVar[$key->chatId]['html_body']=str_replace(array_keys($chat_session_data),array_values($chat_session_data),$standard_data_text);
@@ -164,6 +203,8 @@ xyz;
 ##            Now fire the mail                                        ##
 #########################################################################
 
+
+		$mailCounter=1;
 		foreach($xmlStoreVar as $key=>$value):
 			try{
 				$mail_body=$xmlStoreVar[$key]['html_body'];
@@ -179,35 +220,42 @@ xyz;
 				$email5="deepak_purushothaman@glic.com";
 				$email6="javier_florez@glic.com";
 				$email7="dennis.finn@oracle.com";
-				$email8="melinda.doane@oracle.com";
+				$email8="joseph_pennisi@glic.com";
+
+				if($mailCounter%200==0){
+					//You can't sent more than 200 mails at a time from OSvC.
+					sleep(3);
+				}
 
 				$mm = new RNCPHP\MailMessage();
-				//$mm->To->EmailAddresses = array($adminEmail,$email1,$email2,$email3,$email4,$email5,$email6,$email7,$email8);
-				$mm->To->EmailAddresses=array($adminEmail);
+				$mm->To->EmailAddresses=array("doru.arfire.1279@gmail.com");
+				//$mm->CC->EmailAddresses = array($email1,$email2,$email3,$email4,$email5,$email6,$email7);
 				$mm->Subject = "OSvC ".$key;
 				$mm->Body->Text = $mail_body;
+				$mm->Options->IncludeOECustomHeaders = true;
+				$mm->Headers[0]='X-AUTONOMY-SUBTYPE:OracleChat';
 				//$mm->Body->Html = $mail_body;
-				$mm->Options->IncludeOECustomHeaders = false;
 				$mm->send();
+				$mailCounter++;
 				$ps_log->notice("Chat Transcript Mail Succesfully sent for Chat Id: {$key}");
 
 			}
 			catch(RNCPHP\ConnectAPIError $err){
-				$ps_log->fatal("Connect PHP Error :".$err->getMessage(). "@". $err->getLine());
+				$ps_log->error("Connect PHP Error :".$err->getMessage(). "@". $err->getLine());
 			}
 		endforeach;
 
 	}
 	catch(RNCPHP\ConnectAPIError $err){
-		$ps_log->fatal(" Connect PHP Error :".$err->getMessage(). "@". $err->getLine());
+		$ps_log->error(" Connect PHP Error :".$err->getMessage(). "@". $err->getLine());
 	}
 
 }
 ?>
 
 <?php
-function debug($arrayObject){
-	echo "<textarea style='color:red;height:600px;width:100%'>";
+function debug($arrayObject,$height="30px"){
+	echo "<textarea style='color:red;height:$height;width:100%'>";
 	print_r($arrayObject);
 	echo "</textarea>";
 }
@@ -223,6 +271,38 @@ function getUserEntityName($type,$user_id){
 	}
 	else
 		return "-NA-";
+
+}
+
+function str_to_timestamp($str){
+	$str=trim($str,"'");
+	$d=new DateTime($str);
+	return $d->getTimestamp();
+}
+
+function remove_spcl_chars($from_name){
+
+	$from_name=str_replace(" ","",$from_name);
+	$from_name=str_replace(".","",$from_name);
+	$from_name=str_replace("_","",$from_name);
+	$from_name=str_replace(":","",$from_name);
+	$from_name=str_replace(";","",$from_name);
+
+	return $from_name;
+}
+
+function debugger(){
+	global $interval_start, $interval_end, $filters,$arr,$adminEmail;
+
+	debug($interval_start."--".$interval_end."---".$adminEmail);
+	debug($filters,"200px");
+	$x=array();
+	while($red=$arr->next()):
+		if($red['messageText'])
+			$x[]=$red;
+	endwhile;
+	debug($x,"600px");
+	exit;
 
 }
 
