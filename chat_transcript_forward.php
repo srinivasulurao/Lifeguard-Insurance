@@ -8,7 +8,7 @@
 
 error_reporting(E_ALL);
 set_time_limit(0); //This going to run the code for unlimited time.
-$dateTimeZone = new DateTimeZone("UTC");
+//$dateTimeZone = new DateTimeZone("UTC");
 $dateTime = new DateTime();
 $date= new DateTime(); // Current timezone.
 $interval_end =$date->setTimestamp(($date->getTimestamp()+(3600*1)))->format("Y-m-d H:i:s");
@@ -28,7 +28,7 @@ define('PROC_DIR', '/tmp/');
 
 
 require_once(get_cfg_var('doc_root')."/ConnectPHP/Connect_init.php");
-initConnectAPI('srinivasulu','ATG2dfPQ');
+initConnectAPI('srinivasulu_RNT','ATG2dfPQ');
 require_once (get_cfg_var('doc_root') . '/custom/oracle/libraries/PSLog-2.0.php');
 
 
@@ -44,7 +44,6 @@ use RightNow\Connect\v1_2 as RNCPHP;
 
 $messageBase= RightNow\Connect\v1_2\MessageBase::fetch(CUSTOM_MSG_CHAT_TRANSCRIPT_CONTACT_ID);
 $adminContactId= $messageBase->Value;
-$adminContactId=79; //Client Email
 
 $contact=RNCPHP\Contact::fetch($adminContactId);
 $adminEmail=($contact->Emails[0]->Address)?$contact->Emails[0]->Address:$contact->Emails[1]->Address;
@@ -233,7 +232,7 @@ xyz;
 					break;
 
 				$mm = new RNCPHP\MailMessage();
-				$mm->To->EmailAddresses=array($e10,$e9);
+				$mm->To->EmailAddresses=array($adminEmail,$e9);
 				//$mm->CC->EmailAddresses = array($email1,$email2,$email3,$email4,$email5,$email6,$email7);
 				$mm->Subject = "OSvC ".$key;
 				$mm->Body->Text = $mail_body;
@@ -325,6 +324,15 @@ function debugger(){
 	debug($x,"600px");
 	exit;
 
+}
+
+function truncate_pslog(){
+	$ps_row = RNCPHP\ROQL::queryObject("SELECT PSLog.Log from PSLog.Log")->next();
+	while($ps_rec = $ps_row->next()){
+		$ps_rec->destroy();
+	}
+	RNCPHP\ConnectAPI::commit();
+	exit;
 }
 
 ?>
